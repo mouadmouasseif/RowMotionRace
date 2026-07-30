@@ -6,5 +6,8 @@ Les images de cette enveloppe sont les fichiers officiels fournis pour l'interfa
 - `rowmotion-race-logo.png` : signature horizontale pour le web et l'ordinateur ;
 - `rowmotion-race-mobile-showcase.png` : référence visuelle de l'expérience mobile ;
 - `favicon.png` : icône de navigateur.
+- `icon-192.png` et `icon-512.png` : icônes d'installation PWA ;
+- `maskable-icon-512.png` : icône adaptable Android ;
+- `apple-touch-icon.png` : icône d'installation Apple.
 
 Leur rendu conserve leurs proportions d'origine grâce au mode `object-contain`.

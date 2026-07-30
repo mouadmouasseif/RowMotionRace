@@ -12,6 +12,12 @@ Application web responsive de gestion des compétitions d'aviron, reliée au pro
 - résultats provisoires, programme et classements ;
 - aperçu local des participants sans écriture automatique dans Firebase.
 
+## Installation mobile et ordinateur
+
+RowMotion Race est une Progressive Web App (PWA). Une fois servie en HTTPS, elle peut être installée depuis les navigateurs modernes sur Android, iPhone/iPad, Windows, macOS et ChromeOS. Le bouton « Installer l’app » déclenche l’installation native lorsqu’elle est disponible et affiche les instructions adaptées sur Safari.
+
+Le manifeste, le service worker, les icônes 192/512, l’icône maskable, l’icône Apple et une page hors ligne sont inclus dans le projet.
+
 Les fichiers de marque se trouvent dans `public/brand/` :
 
 - `rowmotion-race-icon.png` ;
