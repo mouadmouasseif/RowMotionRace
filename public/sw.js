@@ -1,19 +1,24 @@
-const CACHE_NAME = "rowmotion-race-shell-v1";
+const CACHE_NAME = "rowmotion-race-shell-v2";
 const APP_SHELL = [
   "/",
   "/hors-ligne",
   "/manifest.webmanifest",
+  "/brand/apple-touch-icon.png",
+  "/brand/favicon.png",
   "/brand/icon-192.png",
   "/brand/icon-512.png",
   "/brand/maskable-icon-512.png",
-  "/brand/rowmotion-race-logo.png"
+  "/brand/rowmotion-race-logo.png",
+  "/brand/rowmotion-race-mobile-showcase.png"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => Promise.allSettled(APP_SHELL.map((url) => cache.add(new Request(url, { cache: "reload" })))))
+      .then((cache) =>
+        Promise.allSettled(APP_SHELL.map((url) => cache.add(new Request(url, { cache: "reload" }))))
+      )
       .then(() => self.skipWaiting())
   );
 });
@@ -42,7 +47,7 @@ self.addEventListener("fetch", (event) => {
   const cacheable =
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/brand/") ||
-    ["image", "font", "style", "script"].includes(request.destination);
+    ["font", "image", "script", "style"].includes(request.destination);
 
   if (!cacheable) return;
 

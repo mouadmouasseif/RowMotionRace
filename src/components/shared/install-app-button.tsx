@@ -1,18 +1,69 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Share2, X } from "lucide-react";
+import { Download, MonitorDown, Share2, Smartphone, X } from "lucide-react";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 }
 
-type HelpMode = "ios" | "mac-safari" | "generic";
+type HelpMode = "ios" | "mac-safari" | "android" | "desktop" | "generic";
 
 function isRunningStandalone() {
   const iosNavigator = navigator as Navigator & { standalone?: boolean };
   return window.matchMedia("(display-mode: standalone)").matches || iosNavigator.standalone === true;
+}
+
+function getHelpMode(): HelpMode {
+  const userAgent = navigator.userAgent.toLowerCase();
+  const ios =
+    /iphone|ipad|ipod/.test(userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const safari = /safari/.test(userAgent) && !/chrome|crios|android|edg/.test(userAgent);
+  const android = /android/.test(userAgent);
+  const desktop = /windows|macintosh|linux|cros/.test(userAgent) && !android;
+
+  if (ios) return "ios";
+  if (safari) return "mac-safari";
+  if (android) return "android";
+  if (desktop) return "desktop";
+  return "generic";
+}
+
+function getInstallHelp(mode: HelpMode) {
+  switch (mode) {
+    case "ios":
+      return {
+        icon: Share2,
+        title: "Installer sur iPhone ou iPad",
+        body: "Dans Safari, touchez Partager puis choisissez Ajouter a l'ecran d'accueil."
+      };
+    case "mac-safari":
+      return {
+        icon: MonitorDown,
+        title: "Installer sur Mac",
+        body: "Dans Safari, ouvrez le menu Fichier puis choisissez Ajouter au Dock."
+      };
+    case "android":
+      return {
+        icon: Smartphone,
+        title: "Installer sur Android",
+        body: "Dans Chrome ou Edge, ouvrez le menu du navigateur puis choisissez Installer l'application ou Ajouter a l'ecran d'accueil."
+      };
+    case "desktop":
+      return {
+        icon: MonitorDown,
+        title: "Installer sur ordinateur",
+        body: "Dans Chrome, Edge ou Brave, utilisez l'icone d'installation dans la barre d'adresse ou le menu du navigateur."
+      };
+    default:
+      return {
+        icon: Download,
+        title: "Installer RowMotion Race",
+        body: "Ouvrez le menu de votre navigateur puis choisissez Installer l'application ou Ajouter a l'ecran d'accueil."
+      };
+  }
 }
 
 export function InstallAppButton() {
@@ -24,12 +75,7 @@ export function InstallAppButton() {
   useEffect(() => {
     if (isRunningStandalone()) return;
 
-    const userAgent = navigator.userAgent.toLowerCase();
-    const ios = /iphone|ipad|ipod/.test(userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const safari = /safari/.test(userAgent) && !/chrome|crios|android|edg/.test(userAgent);
-
-    setHelpMode(ios ? "ios" : safari ? "mac-safari" : "generic");
+    setHelpMode(getHelpMode());
     setVisible(true);
 
     const onBeforeInstall = (event: Event) => {
@@ -65,6 +111,9 @@ export function InstallAppButton() {
 
   if (!visible) return null;
 
+  const help = getInstallHelp(helpMode);
+  const HelpIcon = help.icon;
+
   return (
     <>
       <button
@@ -74,7 +123,7 @@ export function InstallAppButton() {
         aria-haspopup="dialog"
       >
         <Download className="size-4 text-race-primary" aria-hidden="true" />
-        Installer l’app
+        Installer l&apos;app
       </button>
 
       {showHelp ? (
@@ -94,22 +143,18 @@ export function InstallAppButton() {
               <X className="size-4" aria-hidden="true" />
             </button>
             <div className="mb-4 grid size-12 place-items-center rounded-2xl bg-race-primary/15 text-race-primary">
-              {helpMode === "ios" ? <Share2 className="size-6" /> : <Download className="size-6" />}
+              <HelpIcon className="size-6" aria-hidden="true" />
             </div>
-            <h2 id="install-title" className="pr-10 text-xl font-semibold">Installer RowMotion Race</h2>
-            <p className="mt-3 text-sm leading-6 text-race-muted">
-              {helpMode === "ios"
-                ? "Dans Safari, touchez Partager puis « Sur l’écran d’accueil »."
-                : helpMode === "mac-safari"
-                  ? "Dans Safari, ouvrez le menu Fichier puis choisissez « Ajouter au Dock »."
-                  : "Ouvrez le menu de votre navigateur puis choisissez « Installer l’application » ou « Ajouter à l’écran d’accueil »."}
-            </p>
+            <h2 id="install-title" className="pr-10 text-xl font-semibold">
+              {help.title}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-race-muted">{help.body}</p>
             <button
               type="button"
               onClick={() => setShowHelp(false)}
               className="mt-5 w-full rounded-xl bg-race-primary px-4 py-3 text-sm font-bold text-white hover:bg-blue-500"
             >
-              J’ai compris
+              J&apos;ai compris
             </button>
           </section>
         </div>

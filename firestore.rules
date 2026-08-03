@@ -1,0 +1,154 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : "athlete";
+    }
+
+    function isSuperAdmin() {
+      return userRole() in ["SUPER_ADMIN", "super_admin"];
+    }
+
+    function isCompetitionAdmin() {
+      return userRole() in ["ADMIN", "COMPETITION_ADMIN", "competition_admin", "federation_admin"];
+    }
+
+    function isJudge(competitionId, roles) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/competitions/$(competitionId)/judges/$(request.auth.uid))
+        && get(/databases/$(database)/documents/competitions/$(competitionId)/judges/$(request.auth.uid)).data.role in roles;
+    }
+
+    function canReadCompetition(competitionId) {
+      return signedIn();
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isCompetitionAdmin() || isSuperAdmin());
+      allow write: if isSuperAdmin();
+    }
+
+    match /athletes/{athleteId} {
+      allow read: if signedIn();
+      allow write: if isCompetitionAdmin() || isSuperAdmin();
+    }
+
+    match /clubs/{clubId} {
+      allow read: if signedIn();
+      allow write: if isCompetitionAdmin() || isSuperAdmin();
+    }
+
+    match /coaches/{coachId} {
+      allow read: if signedIn();
+      allow write: if isCompetitionAdmin() || isSuperAdmin();
+    }
+
+    match /competitions/{competitionId} {
+      allow read: if canReadCompetition(competitionId);
+      allow create, update: if isCompetitionAdmin() || isSuperAdmin();
+      allow delete: if isSuperAdmin();
+
+      match /categories/{categoryId} {
+        allow read: if canReadCompetition(competitionId);
+        allow write: if isCompetitionAdmin() || isSuperAdmin();
+      }
+
+      match /judges/{judgeId} {
+        allow read: if canReadCompetition(competitionId);
+        allow write: if isCompetitionAdmin() || isSuperAdmin();
+      }
+
+      match /cameras/{cameraId} {
+        allow read: if canReadCompetition(competitionId);
+        allow write: if isCompetitionAdmin() || isSuperAdmin();
+      }
+
+      match /races/{raceId} {
+        allow read: if canReadCompetition(competitionId);
+        allow create, delete: if isCompetitionAdmin() || isSuperAdmin();
+        allow update: if isCompetitionAdmin()
+          || isSuperAdmin()
+          || isJudge(competitionId, ["START_JUDGE", "TIMEKEEPER", "CHIEF_JUDGE", "ADMIN"]);
+
+        match /entries/{entryId} {
+          allow read: if canReadCompetition(competitionId);
+          allow write: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["START_JUDGE", "CHIEF_JUDGE", "ADMIN"]);
+        }
+
+        match /boats/{boatId} {
+          allow read: if canReadCompetition(competitionId);
+          allow create, update: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["CHIEF_JUDGE", "ADMIN"]);
+          allow delete: if false;
+        }
+
+        match /lanes/{laneId} {
+          allow read: if canReadCompetition(competitionId);
+          allow create, update: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["CHIEF_JUDGE", "ADMIN"]);
+          allow delete: if false;
+        }
+
+        match /draws/{drawId} {
+          allow read: if canReadCompetition(competitionId);
+          allow create, update: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["CHIEF_JUDGE", "ADMIN"]);
+          allow delete: if false;
+        }
+
+        match /checkpoints/{checkpointId} {
+          allow read: if canReadCompetition(competitionId);
+          allow create, update: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["CHIEF_JUDGE", "TIMEKEEPER", "ADMIN"]);
+          allow delete: if false;
+        }
+
+        match /splits/{splitId} {
+          allow read: if canReadCompetition(competitionId);
+          allow create, update: if isCompetitionAdmin()
+            || isSuperAdmin()
+            || isJudge(competitionId, ["COURSE_JUDGE", "TIMEKEEPER", "CHIEF_JUDGE", "ADMIN"]);
+          allow delete: if false;
+        }
+
+        match /finishes/{finishId} {
+          allow read: if canReadCompetition(competitionId);
+          allow create, update: if isCompetitionAdmin()
+            || isSuperAdmin()
+            || isJudge(competitionId, ["FINISH_JUDGE", "TIMEKEEPER", "CHIEF_JUDGE", "ADMIN"]);
+          allow delete: if false;
+        }
+
+        match /results/{resultId} {
+          allow read: if canReadCompetition(competitionId);
+          allow write: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["CHIEF_JUDGE", "TIMEKEEPER", "ADMIN"]);
+        }
+      }
+
+      match /penalties/{penaltyId} {
+        allow read: if canReadCompetition(competitionId);
+        allow create, update: if isCompetitionAdmin()
+          || isSuperAdmin()
+          || isJudge(competitionId, ["COURSE_JUDGE", "CHIEF_JUDGE", "ADMIN"]);
+        allow delete: if false;
+      }
+
+      match /liveEvents/{eventId} {
+        allow read: if canReadCompetition(competitionId);
+        allow create: if isCompetitionAdmin()
+          || isSuperAdmin()
+          || isJudge(competitionId, ["START_JUDGE", "FINISH_JUDGE", "COURSE_JUDGE", "CHIEF_JUDGE", "TIMEKEEPER", "ADMIN"]);
+        allow update, delete: if false;
+      }
+
+      match /auditLogs/{logId} {
+        allow read: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["CHIEF_JUDGE", "ADMIN"]);
+        allow create: if signedIn();
+        allow update, delete: if false;
+      }
+    }
+  }
+}

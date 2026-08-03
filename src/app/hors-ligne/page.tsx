@@ -14,10 +14,10 @@ export default function OfflinePage() {
         </div>
         <h1 className="mt-6 text-2xl font-semibold">Connexion indisponible</h1>
         <p className="mt-3 text-sm leading-6 text-race-muted">
-          RowMotion Race est installé, mais cette page nécessite une connexion. Reconnectez-vous puis réessayez.
+          RowMotion Race est installe, mais cette page necessite une connexion. Reconnectez-vous puis reessayez.
         </p>
         <Link href="/" className="mt-6 inline-flex rounded-xl bg-race-primary px-5 py-3 text-sm font-bold text-white">
-          Retour à l’accueil
+          Retour a l&apos;accueil
         </Link>
       </section>
     </main>

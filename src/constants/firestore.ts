@@ -5,7 +5,32 @@ export const ROWMOTION_COLLECTIONS = {
   clubs: "clubs",
   federations: "federations",
   categories: "categories",
-  notifications: "notifications"
+  notifications: "notifications",
+  competitions: "competitions"
+} as const;
+
+export const LIVE_COMPETITION_COLLECTIONS = {
+  categories: "categories",
+  judges: "judges",
+  cameras: "cameras",
+  races: "races",
+  penalties: "penalties",
+  auditLogs: "auditLogs",
+  liveEvents: "liveEvents"
+} as const;
+
+export const LIVE_RACE_COLLECTIONS = {
+  entries: "entries",
+  boats: "boats",
+  lanes: "lanes",
+  draws: "draws",
+  checkpoints: "checkpoints",
+  splits: "splits",
+  start: "start",
+  penalties: "penalties",
+  finishes: "finishes",
+  results: "results",
+  liveEvents: "liveEvents"
 } as const;
 
 export type RowMotionCollectionName = (typeof ROWMOTION_COLLECTIONS)[keyof typeof ROWMOTION_COLLECTIONS];

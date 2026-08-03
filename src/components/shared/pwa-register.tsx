@@ -11,7 +11,7 @@ export function PwaRegister() {
         const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
         await registration.update();
       } catch {
-        // L’application reste utilisable dans le navigateur si l’enregistrement échoue.
+        // The app remains usable in the browser if service worker registration fails.
       }
     };
 

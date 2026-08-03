@@ -11,17 +11,17 @@ export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
   applicationName: "RowMotion Race",
   title: {
-    default: "RowMotion Race — Gestion des compétitions d’aviron",
-    template: "%s · RowMotion Race"
+    default: "RowMotion Race - Gestion des competitions d'aviron",
+    template: "%s - RowMotion Race"
   },
   description:
-    "L’application officielle de gestion, de chronométrage et de suivi en direct des compétitions d’aviron au Maroc.",
+    "L'application officielle de gestion, de chronometrage et de suivi en direct des competitions d'aviron au Maroc.",
   keywords: [
     "RowMotion Race",
     "aviron Maroc",
-    "compétition d’aviron",
-    "chronométrage sportif",
-    "résultats en direct",
+    "competition d'aviron",
+    "chronometrage sportif",
+    "resultats en direct",
     "classement aviron"
   ],
   authors: [{ name: "RowMotion Race" }],
@@ -49,22 +49,22 @@ export const metadata: Metadata = {
     type: "website",
     locale: "fr_MA",
     siteName: "RowMotion Race",
-    title: "RowMotion Race — Performance, précision, victoire",
+    title: "RowMotion Race - Performance, precision, victoire",
     description:
-      "Gérez les départs, le chronométrage, les résultats et les classements de vos compétitions d’aviron.",
+      "Gerez les departs, le chronometrage, les resultats et les classements de vos competitions d'aviron.",
     images: [
       {
         url: "/og.png",
         width: 1536,
         height: 1024,
-        alt: "RowMotion Race — Performance, précision, victoire"
+        alt: "RowMotion Race - Performance, precision, victoire"
       }
     ]
   },
   twitter: {
     card: "summary_large_image",
     title: "RowMotion Race",
-    description: "La plateforme de gestion des compétitions d’aviron au Maroc.",
+    description: "La plateforme de gestion des competitions d'aviron au Maroc.",
     images: ["/og.png"]
   },
   robots: {
@@ -75,6 +75,7 @@ export const metadata: Metadata = {
   other: {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-title": "RowMotion Race",
     "msapplication-TileColor": "#03070d",
     "msapplication-TileImage": "/brand/icon-192.png"
   }
