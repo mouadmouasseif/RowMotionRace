@@ -68,3 +68,35 @@ export function categoriesCollection(competitionId: string) {
 export function judgesCollection(competitionId: string) {
   return collection(getFirebaseClientDb(), "competitions", competitionId, "judges");
 }
+
+export function federationsCollection() {
+  return collection(getFirebaseClientDb(), "federations");
+}
+
+export function competitionsCollection() {
+  return collection(getFirebaseClientDb(), "competitions");
+}
+
+export function competitionRegistrationsCollection(competitionId: string) {
+  return collection(getFirebaseClientDb(), "competitions", competitionId, "registrations");
+}
+
+export function competitionEventsCollection(competitionId: string) {
+  return collection(getFirebaseClientDb(), "competitions", competitionId, "events");
+}
+
+export function competitionDrawsCollection(competitionId: string) {
+  return collection(getFirebaseClientDb(), "competitions", competitionId, "draws");
+}
+
+export function competitionStartListsCollection(competitionId: string) {
+  return collection(getFirebaseClientDb(), "competitions", competitionId, "startLists");
+}
+
+export function competitionReportsCollection(competitionId: string) {
+  return collection(getFirebaseClientDb(), "competitions", competitionId, "reports");
+}
+
+export function boatsCollection() {
+  return collection(getFirebaseClientDb(), "boats");
+}

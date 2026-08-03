@@ -50,6 +50,22 @@ service cloud.firestore {
       allow write: if isCompetitionAdmin() || isSuperAdmin();
     }
 
+    match /federations/{federationId} {
+      allow read: if signedIn();
+      allow write: if isCompetitionAdmin() || isSuperAdmin();
+    }
+
+    match /judges/{judgeId} {
+      allow read: if signedIn();
+      allow write: if isCompetitionAdmin() || isSuperAdmin();
+    }
+
+    match /boats/{boatId} {
+      allow read: if signedIn();
+      allow create, update: if isCompetitionAdmin() || isSuperAdmin();
+      allow delete: if false;
+    }
+
     match /competitions/{competitionId} {
       allow read: if canReadCompetition(competitionId);
       allow create, update: if isCompetitionAdmin() || isSuperAdmin();
@@ -58,6 +74,37 @@ service cloud.firestore {
       match /categories/{categoryId} {
         allow read: if canReadCompetition(competitionId);
         allow write: if isCompetitionAdmin() || isSuperAdmin();
+      }
+
+      match /registrations/{registrationId} {
+        allow read: if canReadCompetition(competitionId);
+        allow create: if signedIn();
+        allow update: if isCompetitionAdmin() || isSuperAdmin();
+        allow delete: if false;
+      }
+
+      match /events/{eventId} {
+        allow read: if canReadCompetition(competitionId);
+        allow create, update: if isCompetitionAdmin() || isSuperAdmin();
+        allow delete: if false;
+      }
+
+      match /draws/{drawId} {
+        allow read: if canReadCompetition(competitionId);
+        allow create, update: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["CHIEF_JUDGE", "ADMIN"]);
+        allow delete: if false;
+      }
+
+      match /startLists/{startListId} {
+        allow read: if canReadCompetition(competitionId);
+        allow create, update: if isCompetitionAdmin() || isSuperAdmin() || isJudge(competitionId, ["CHIEF_JUDGE", "ADMIN"]);
+        allow delete: if false;
+      }
+
+      match /reports/{reportId} {
+        allow read: if isCompetitionAdmin() || isSuperAdmin();
+        allow create, update: if isCompetitionAdmin() || isSuperAdmin();
+        allow delete: if false;
       }
 
       match /judges/{judgeId} {

@@ -4,6 +4,8 @@ export const ROWMOTION_COLLECTIONS = {
   coaches: "coaches",
   clubs: "clubs",
   federations: "federations",
+  judges: "judges",
+  boats: "boats",
   categories: "categories",
   notifications: "notifications",
   competitions: "competitions"

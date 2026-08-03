@@ -7,4 +7,4 @@ export function middleware(request: NextRequest) {
   return NextResponse.redirect(url);
 }
 
-export const config = { matcher: ["/tableau-de-bord/:path*", "/athletes/:path*", "/clubs/:path*", "/diagnostic-integration/:path*", "/competitions/:path*", "/depart/:path*", "/chronometrage/:path*", "/resultats/:path*", "/programme/:path*", "/classements/:path*"] };
+export const config = { matcher: ["/dashboard/:path*", "/federation/:path*", "/boats/:path*", "/tableau-de-bord/:path*", "/athletes/:path*", "/clubs/:path*", "/diagnostic-integration/:path*", "/competitions/:path*", "/depart/:path*", "/chronometrage/:path*", "/resultats/:path*", "/programme/:path*", "/classements/:path*"] };
