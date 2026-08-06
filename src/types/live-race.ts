@@ -14,6 +14,7 @@ export type RaceStatus =
 export type ResultsStatus = "PROVISIONAL" | "OFFICIAL";
 export type CameraType = "START" | "COURSE" | "FINISH" | "JURY" | "DRONE" | "OTHER";
 export type CameraStatus = "ONLINE" | "OFFLINE";
+export type CameraConnectionMode = "HDMI_CAPTURE" | "RTSP" | "HLS" | "WEBRTC" | "MJPEG" | "OBS_BROWSER";
 export type JudgeRole = "START_JUDGE" | "FINISH_JUDGE" | "COURSE_JUDGE" | "CHIEF_JUDGE" | "TIMEKEEPER" | "ADMIN";
 export type EntryStatus = "WAITING" | "PRESENT" | "READY" | "DNS" | "RACING" | "FINISHED" | "DNF" | "DSQ";
 export type PenaltyStatus = "ACTIVE" | "MODIFIED" | "CANCELLED";
@@ -169,6 +170,12 @@ export interface RaceCamera {
   type: CameraType;
   location?: string;
   streamUrl?: string;
+  ipAddress?: string;
+  port?: number;
+  username?: string;
+  connectionMode?: CameraConnectionMode;
+  obsSceneName?: string;
+  notes?: string;
   enabled: boolean;
   status: CameraStatus;
   connectedAt?: Timestamp;

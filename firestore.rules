@@ -27,7 +27,11 @@ service cloud.firestore {
     }
 
     function canReadCompetition(competitionId) {
-      return signedIn();
+      return signedIn()
+        || (
+          exists(/databases/$(database)/documents/competitions/$(competitionId))
+          && get(/databases/$(database)/documents/competitions/$(competitionId)).data.publicLiveEnabled == true
+        );
     }
 
     match /users/{userId} {
@@ -67,7 +71,7 @@ service cloud.firestore {
     }
 
     match /competitions/{competitionId} {
-      allow read: if canReadCompetition(competitionId);
+      allow read: if signedIn() || resource.data.publicLiveEnabled == true;
       allow create, update: if isCompetitionAdmin() || isSuperAdmin();
       allow delete: if isSuperAdmin();
 

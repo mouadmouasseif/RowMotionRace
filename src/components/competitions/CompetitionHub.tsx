@@ -1,13 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { updateDoc } from "firebase/firestore";
 import { CalendarDays, ClipboardList, Flag, Radio, Settings, Share2, Shuffle, Trophy, Users, Waves } from "lucide-react";
 import { useCompetition } from "@/hooks/useCompetitions";
 import { useCompetitionEvents } from "@/hooks/useCompetitionEvents";
 import { useRegistrations } from "@/hooks/useRegistrations";
 import { useLiveRace } from "@/hooks/useLiveRace";
 import { publicLiveUrl } from "@/services/publicLiveService";
+import { competitionDoc } from "@/services/livePaths";
 import { RegistrationPanel } from "./RegistrationPanel";
 import { EventManagerPanel } from "./EventManagerPanel";
 import { DrawCenterPanel } from "./DrawCenterPanel";
@@ -33,8 +36,20 @@ export function CompetitionHub({ competitionId }: { competitionId: string }) {
   const events = useCompetitionEvents(competitionId);
   const registrations = useRegistrations(competitionId);
   const { races } = useLiveRace(competitionId);
+  const [shareState, setShareState] = useState<"idle" | "publishing" | "published" | "error">("idle");
   const liveRace = races.find((race) => race.status === "RACING" || race.status === "FINISHING") ?? races[0];
   const publicUrl = publicLiveUrl(competition?.competitionCode || competitionId);
+
+  async function shareLive() {
+    setShareState("publishing");
+    try {
+      await updateDoc(competitionDoc(competitionId), { publicLiveEnabled: true, publicResultsEnabled: true });
+      await navigator.clipboard?.writeText(publicUrl);
+      setShareState("published");
+    } catch {
+      setShareState("error");
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -58,7 +73,8 @@ export function CompetitionHub({ competitionId }: { competitionId: string }) {
           <Link href={`/race-control/start?competitionId=${competitionId}${liveRace ? `&raceId=${liveRace.id}` : ""}`} className="inline-flex h-11 items-center rounded-xl border border-white/10 px-4 text-sm font-bold">STARTER</Link>
           <Link href={`/race-control/finish?competitionId=${competitionId}${liveRace ? `&raceId=${liveRace.id}` : ""}`} className="inline-flex h-11 items-center rounded-xl border border-white/10 px-4 text-sm font-bold">FINISH</Link>
           <Link href={`/jury?competitionId=${competitionId}${liveRace ? `&raceId=${liveRace.id}` : ""}`} className="inline-flex h-11 items-center rounded-xl border border-white/10 px-4 text-sm font-bold">JURY</Link>
-          <button type="button" onClick={() => navigator.clipboard?.writeText(publicUrl)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 px-4 text-sm font-bold"><Share2 className="size-4" />SHARE LIVE</button>
+          <button type="button" onClick={shareLive} className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 px-4 text-sm font-bold"><Share2 className="size-4" />{shareState === "published" ? "LIVE COPIED" : shareState === "publishing" ? "PUBLISHING..." : "SHARE LIVE"}</button>
+          {shareState === "error" && <span className="inline-flex h-11 items-center text-xs font-bold text-race-warning">Impossible d&apos;activer le live public</span>}
         </div>
       </header>
       <nav className="flex gap-2 overflow-x-auto rounded-2xl border border-white/[0.07] bg-race-surface p-2">

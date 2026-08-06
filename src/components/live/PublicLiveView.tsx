@@ -2,78 +2,62 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
-import { Radio } from "lucide-react";
+import { Radio, VideoOff } from "lucide-react";
 import type { Competition } from "@/types/federation";
 import type { Race, RaceEntry } from "@/types/live-race";
-import type { RowMotionAthlete, RowMotionClub } from "@/types/rowmotion-ai";
 import { competitionsCollection, racesCollection } from "@/services/livePaths";
 import { useRaceEntries } from "@/hooks/useRaceEntries";
 import { useLiveResults } from "@/hooks/useLiveResults";
 import { useRaceChronometer } from "@/hooks/useRaceChronometer";
-import { subscribeExistingAthletes } from "@/integrations/rowmotion-ai/rowmotion-athletes.adapter";
-import { subscribeExistingClubs } from "@/integrations/rowmotion-ai/rowmotion-clubs.adapter";
+import { useLiveCameras } from "@/hooks/useLiveCameras";
 import { LiveRanking } from "@/live/LiveRanking";
 
 export function PublicLiveView({ code }: { code: string }) {
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [race, setRace] = useState<Race | null>(null);
-  const [rowMotionAthletes, setRowMotionAthletes] = useState<RowMotionAthlete[]>([]);
-  const [rowMotionClubs, setRowMotionClubs] = useState<RowMotionClub[]>([]);
+  const [liveError, setLiveError] = useState("");
 
   useEffect(() => {
     let unsubscribeRace: (() => void) | undefined;
-    const unsubscribeCompetition = onSnapshot(query(competitionsCollection(), where("competitionCode", "==", code), limit(1)), async (snapshot) => {
-      const competitionDoc = snapshot.docs[0];
-      if (!competitionDoc) {
+    const unsubscribeCompetition = onSnapshot(
+      query(competitionsCollection(), where("competitionCode", "==", code), where("publicLiveEnabled", "==", true), limit(1)),
+      async (snapshot) => {
+        setLiveError("");
+        const competitionDoc = snapshot.docs[0];
+        if (!competitionDoc) {
+          setCompetition(null);
+          setRace(null);
+          return;
+        }
+        const nextCompetition = { id: competitionDoc.id, ...competitionDoc.data() } as Competition;
+        setCompetition(nextCompetition);
+        unsubscribeRace?.();
+        const liveRaceSnapshot = await getDocs(query(racesCollection(nextCompetition.id), where("status", "in", ["RACING", "FINISHING", "FINISHED", "VALIDATED"]), limit(1)));
+        const raceDoc = liveRaceSnapshot.docs[0];
+        if (!raceDoc) {
+          setRace(null);
+          return;
+        }
+        unsubscribeRace = onSnapshot(raceDoc.ref, (nextRace) => setRace(nextRace.exists() ? ({ id: nextRace.id, ...nextRace.data() } as Race) : null), (error) => setLiveError(error.message));
+      },
+      (error) => {
+        setLiveError(error.message);
         setCompetition(null);
         setRace(null);
-        return;
       }
-      const nextCompetition = { id: competitionDoc.id, ...competitionDoc.data() } as Competition;
-      setCompetition(nextCompetition);
-      unsubscribeRace?.();
-      const liveRaceSnapshot = await getDocs(query(racesCollection(nextCompetition.id), where("status", "in", ["RACING", "FINISHING", "FINISHED", "VALIDATED"]), limit(1)));
-      const raceDoc = liveRaceSnapshot.docs[0];
-      if (!raceDoc) {
-        setRace(null);
-        return;
-      }
-      unsubscribeRace = onSnapshot(raceDoc.ref, (nextRace) => setRace(nextRace.exists() ? ({ id: nextRace.id, ...nextRace.data() } as Race) : null));
-    });
+    );
     return () => {
       unsubscribeCompetition();
       unsubscribeRace?.();
     };
   }, [code]);
 
-  useEffect(() => {
-    const unsubscribeAthletes = subscribeExistingAthletes(setRowMotionAthletes, undefined, 1000);
-    const unsubscribeClubs = subscribeExistingClubs(setRowMotionClubs, undefined, 500);
-    return () => {
-      unsubscribeAthletes();
-      unsubscribeClubs();
-    };
-  }, []);
-
   const { entries } = useRaceEntries(competition?.id ?? "", race?.id);
   const { finishes, penalties } = useLiveResults(competition?.id ?? "", race?.id);
+  const { cameras } = useLiveCameras(competition?.id ?? "");
   const chrono = useRaceChronometer(race);
-  const athleteMap = useMemo(() => new Map(rowMotionAthletes.map((athlete) => [athlete.id, athlete])), [rowMotionAthletes]);
-  const clubMap = useMemo(() => new Map(rowMotionClubs.map((club) => [club.id, club])), [rowMotionClubs]);
-  const enrichedEntries = useMemo<RaceEntry[]>(() => entries.map((entry) => {
-    const athlete = athleteMap.get(entry.athleteId);
-    const club = clubMap.get(athlete?.clubId ?? entry.clubId);
-    return {
-      ...entry,
-      athleteName: athlete?.displayName ?? entry.athleteName,
-      athletePhotoURL: athlete?.photoURL ?? entry.athletePhotoURL,
-      athleteScore: athlete?.score ?? entry.athleteScore,
-      athleteRanking: athlete?.ranking ?? entry.athleteRanking,
-      athletePerformanceLabel: athlete?.performanceLabel ?? entry.athletePerformanceLabel,
-      clubId: athlete?.clubId ?? entry.clubId,
-      clubName: athlete?.clubName ?? club?.name ?? entry.clubName
-    };
-  }), [athleteMap, clubMap, entries]);
+  const publicCamera = useMemo(() => cameras.find((camera) => camera.enabled && camera.streamUrl && ["COURSE", "FINISH", "START"].includes(camera.type)) ?? null, [cameras]);
+  const enrichedEntries = useMemo<RaceEntry[]>(() => entries, [entries]);
   return (
     <main className="min-h-screen bg-[#020b18] text-race-text">
       <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -95,15 +79,20 @@ export function PublicLiveView({ code }: { code: string }) {
                 <p className="text-xs font-bold uppercase text-race-muted">Official timer</p>
                 <p className="font-mono text-4xl font-black tabular-nums">{chrono.hasOfficialStart ? chrono.formatted : "00:00.000"}</p>
               </div>
-              <div className="text-center">
-                <Radio className="mx-auto size-14 text-race-primary" />
-                <p className="mt-3 text-sm font-bold">Flux camera public</p>
-                <p className="mt-1 text-xs text-race-muted">La camera ON AIR sera diffusee ici lorsque la session live est active.</p>
-              </div>
+              {publicCamera?.streamUrl ? (
+                <video src={publicCamera.streamUrl} className="h-full min-h-[52vh] w-full object-cover" muted playsInline controls autoPlay />
+              ) : (
+                <div className="text-center">
+                  <VideoOff className="mx-auto size-14 text-race-primary" />
+                  <p className="mt-3 text-sm font-bold">Aucun flux camera reseau</p>
+                  <p className="mt-1 text-xs text-race-muted">Configure une camera HLS, WebRTC ou MJPEG dans /system/cameras. Une camera PC locale ne peut pas etre envoyee seule au live public.</p>
+                </div>
+              )}
             </div>
           </div>
           <LiveRanking entries={enrichedEntries} finishes={finishes} penalties={penalties} />
         </section>
+        {liveError && <section className="mt-5 rounded-2xl border border-race-warning/25 bg-race-warning/10 p-4 text-sm text-race-warning">Live public bloque: {liveError}</section>}
         <section className="mt-5 race-card rounded-2xl p-5">
           <h2 className="text-sm font-black uppercase tracking-[.16em]">Progression</h2>
           <div className="mt-4 grid grid-cols-5 text-xs text-race-muted"><span>0m</span><span>500m</span><span>1000m</span><span>1500m</span><span className="text-right">2000m</span></div>

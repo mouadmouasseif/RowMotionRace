@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  updateDoc,
+} from "firebase/firestore";
+import {
   AlertTriangle,
   Camera,
   Check,
@@ -34,6 +37,7 @@ import { applyPenalty } from "@/services/penaltyService";
 import { cancelStart, markAttention, restartRace, startRaceClock } from "@/services/chronoService";
 import { confirmFinish, registerFinish, undoFinish } from "@/services/finishService";
 import { publicLiveUrl, qrCodeUrl } from "@/services/publicLiveService";
+import { competitionDoc } from "@/services/livePaths";
 import { queueOfflineTimingEvent } from "@/timing/OfflineEventQueue";
 import { createTimingEvent } from "@/timing/TimingEvents";
 import { subscribeExistingAthletes } from "@/integrations/rowmotion-ai/rowmotion-athletes.adapter";
@@ -455,6 +459,15 @@ function RaceStateCard({ race, chrono, entries }: { race: Race | null; chrono: s
 }
 
 function ShareLivePanel({ competitionId, publicUrl, code }: { competitionId: string; publicUrl: string; code: string }) {
+  const [publishState, setPublishState] = useState<"idle" | "publishing" | "published" | "error">("idle");
+
+  useEffect(() => {
+    setPublishState("publishing");
+    updateDoc(competitionDoc(competitionId), { publicLiveEnabled: true, publicResultsEnabled: true })
+      .then(() => setPublishState("published"))
+      .catch(() => setPublishState("error"));
+  }, [competitionId]);
+
   return (
     <div className="space-y-4">
       <section className="race-card rounded-2xl p-5">
@@ -462,6 +475,7 @@ function ShareLivePanel({ competitionId, publicUrl, code }: { competitionId: str
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_260px]">
           <div className="space-y-3">
             <Info label="Live" value="LIVE ACTIF" live />
+            <Info label="Publication" value={publishState === "published" ? "PUBLIC ENABLED" : publishState === "error" ? "ENABLE FAILED" : "ENABLING..."} live={publishState === "published"} />
             <Info label="Public Code" value={code.toUpperCase()} />
             <Info label="Public Link" value={publicUrl} />
             <div className="flex flex-wrap gap-2"><button onClick={() => navigator.clipboard?.writeText(publicUrl)} className="inline-flex h-11 items-center gap-2 rounded-lg bg-race-primary px-4 text-sm font-bold"><Copy className="size-4" />COPIER LE LIEN</button><Link href={`/live/${code}`} className="inline-flex h-11 items-center rounded-lg border border-white/10 px-4 text-sm font-bold">OUVRIR LE LIVE</Link><Link href={`/competitions/${competitionId}/race-control`} className="inline-flex h-11 items-center rounded-lg border border-white/10 px-4 text-sm font-bold">RACE CONTROL</Link></div>
