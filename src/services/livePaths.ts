@@ -41,6 +41,10 @@ export function raceFinishesCollection(competitionId: string, raceId: string) {
   return collection(getFirebaseClientDb(), "competitions", competitionId, "races", raceId, "finishes");
 }
 
+export function raceTimingEventsCollection(competitionId: string, raceId: string) {
+  return collection(getFirebaseClientDb(), "competitions", competitionId, "races", raceId, "timingEvents");
+}
+
 export function raceResultsCollection(competitionId: string, raceId: string) {
   return collection(getFirebaseClientDb(), "competitions", competitionId, "races", raceId, "results");
 }

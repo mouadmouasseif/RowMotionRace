@@ -84,6 +84,10 @@ export interface CompetitionRegistration {
   competitionId: string;
   athleteId: string;
   athleteName?: string;
+  athletePhotoURL?: string | null;
+  athleteScore?: number | null;
+  athleteRanking?: number | null;
+  athletePerformanceLabel?: string | null;
   clubId: string;
   clubName?: string;
   events: string[];

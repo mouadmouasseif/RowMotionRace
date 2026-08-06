@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -17,7 +17,7 @@ import {
   ShieldAlert,
   Square,
   Timer,
-  Trophy,
+  Users,
   Video,
   Volume2
 } from "lucide-react";
@@ -29,10 +29,16 @@ import { useRaceEntries } from "@/hooks/useRaceEntries";
 import { useLiveResults } from "@/hooks/useLiveResults";
 import { useLiveCameras } from "@/hooks/useLiveCameras";
 import { useRaceChronometer, formatRaceTime } from "@/hooks/useRaceChronometer";
+import { LiveRanking } from "@/live/LiveRanking";
 import { applyPenalty } from "@/services/penaltyService";
 import { cancelStart, markAttention, restartRace, startRaceClock } from "@/services/chronoService";
-import { registerFinish } from "@/services/finishService";
+import { confirmFinish, registerFinish, undoFinish } from "@/services/finishService";
 import { publicLiveUrl, qrCodeUrl } from "@/services/publicLiveService";
+import { queueOfflineTimingEvent } from "@/timing/OfflineEventQueue";
+import { createTimingEvent } from "@/timing/TimingEvents";
+import { subscribeExistingAthletes } from "@/integrations/rowmotion-ai/rowmotion-athletes.adapter";
+import { subscribeExistingClubs } from "@/integrations/rowmotion-ai/rowmotion-clubs.adapter";
+import type { RowMotionAthlete, RowMotionClub } from "@/types/rowmotion-ai";
 import { cn } from "@/lib/utils";
 
 type Mode = "control" | "starter" | "finish" | "jury" | "mobile-starter" | "mobile-finish" | "mobile-jury" | "public-admin" | "beach";
@@ -54,9 +60,37 @@ export function RaceControlExperience({ competitionId, raceId, mode = "control" 
   const results = useLiveResults(resolvedCompetitionId, race?.id);
   const cameras = useLiveCameras(resolvedCompetitionId);
   const chrono = useRaceChronometer(race);
+  const [rowMotionAthletes, setRowMotionAthletes] = useState<RowMotionAthlete[]>([]);
+  const [rowMotionClubs, setRowMotionClubs] = useState<RowMotionClub[]>([]);
   const userId = user?.uid ?? profile?.id ?? "local-official";
   const role = profile?.role ?? "SUPER_ADMIN";
-  const operationalEntries = entries.length > 0 ? entries : fallbackEntries;
+  useEffect(() => {
+    const unsubscribeAthletes = subscribeExistingAthletes(setRowMotionAthletes, undefined, 1000);
+    const unsubscribeClubs = subscribeExistingClubs(setRowMotionClubs, undefined, 500);
+    return () => {
+      unsubscribeAthletes();
+      unsubscribeClubs();
+    };
+  }, []);
+  const athleteMap = useMemo(() => new Map(rowMotionAthletes.map((athlete) => [athlete.id, athlete])), [rowMotionAthletes]);
+  const clubMap = useMemo(() => new Map(rowMotionClubs.map((club) => [club.id, club])), [rowMotionClubs]);
+  const operationalEntries = useMemo(() => {
+    const sourceEntries = entries.length > 0 ? entries : fallbackEntries;
+    return sourceEntries.map((entry) => {
+      const athlete = athleteMap.get(entry.athleteId);
+      const club = clubMap.get(athlete?.clubId ?? entry.clubId);
+      return {
+        ...entry,
+        athleteName: athlete?.displayName ?? entry.athleteName,
+        athletePhotoURL: athlete?.photoURL ?? entry.athletePhotoURL,
+        athleteScore: athlete?.score ?? entry.athleteScore,
+        athleteRanking: athlete?.ranking ?? entry.athleteRanking,
+        athletePerformanceLabel: athlete?.performanceLabel ?? entry.athletePerformanceLabel,
+        clubId: athlete?.clubId ?? entry.clubId,
+        clubName: athlete?.clubName ?? club?.name ?? entry.clubName
+      };
+    });
+  }, [athleteMap, clubMap, entries]);
   const publicUrl = publicLiveUrl(competition?.competitionCode || resolvedCompetitionId);
   const diagnosticErrors = [competitionError, live.error, entriesError, cameras.error].filter(Boolean);
 
@@ -192,20 +226,43 @@ function CameraPlayer({ title }: { title: string }) {
 function StarterPanel({ competitionId, race, entries, userId, compact = false }: { competitionId: string; race: Race | null; entries: RaceEntry[]; userId: string; compact?: boolean }) {
   const [running, setRunning] = useState(false);
   const [state, setState] = useState("READY");
+  const [offlineNotice, setOfflineNotice] = useState("");
   const raceId = race?.id;
   const readyCount = entries.filter((entry) => entry.status === "READY" || entry.status === "PRESENT").length || entries.length;
 
   async function launchSequence() {
     if (!raceId) return;
     setRunning(true);
+    setOfflineNotice("");
     setState("READY");
-    await markAttention(competitionId, raceId, userId);
-    window.setTimeout(() => setState("ATTENTION"), 1200);
-    window.setTimeout(async () => {
-      setState("GO");
-      await startRaceClock(competitionId, raceId, userId);
+    try {
+      await markAttention(competitionId, raceId, userId);
+      window.setTimeout(() => setState("ATTENTION"), 1200);
+      window.setTimeout(async () => {
+        setState("GO");
+        try {
+          await startRaceClock(competitionId, raceId, userId);
+        } catch (error) {
+          if (isOfflineTimingError(error)) {
+            queueOfflineTimingEvent(createTimingEvent({ raceId, type: "START", stationId: "start-control", userId, payload: { competitionId } }));
+            setOfflineNotice("OFFLINE - START stored locally");
+          } else {
+            setOfflineNotice(error instanceof Error ? error.message : "Start rejected");
+          }
+        } finally {
+          setRunning(false);
+        }
+      }, 3000);
+    } catch (error) {
+      if (!isOfflineTimingError(error)) {
+        setOfflineNotice(error instanceof Error ? error.message : "Start rejected");
+        setRunning(false);
+        return;
+      }
+      queueOfflineTimingEvent(createTimingEvent({ raceId, type: "START_ARMED", stationId: "start-control", userId, payload: { competitionId } }));
+      setOfflineNotice("OFFLINE - ARM event stored locally");
       setRunning(false);
-    }, 3000);
+    }
   }
 
   return (
@@ -215,6 +272,7 @@ function StarterPanel({ competitionId, race, entries, userId, compact = false }:
         <p className="text-sm font-bold text-race-success">{readyCount} / {entries.length} PRETS</p>
         <p className="mt-2 text-4xl font-black">{state}</p>
       </div>
+      {offlineNotice && <div className="mt-3 rounded-xl border border-race-warning/30 bg-race-warning/10 p-3 text-xs font-black text-race-warning">{offlineNotice}</div>}
       <div className="mt-4 space-y-2">
         {entries.map((entry) => <LaneMini key={entry.id} entry={entry} />)}
       </div>
@@ -230,10 +288,50 @@ function StarterPanel({ competitionId, race, entries, userId, compact = false }:
 
 function FinishPanel({ competitionId, race, entries, finishes, userId, compact = false }: { competitionId: string; race: Race | null; entries: RaceEntry[]; finishes: RaceFinish[]; userId: string; compact?: boolean }) {
   const chrono = useRaceChronometer(race);
-  const finishedIds = new Set(finishes.map((finish) => finish.id));
+  const activeFinishes = finishes.filter((finish) => finish.reviewStatus !== "CANCELLED");
+  const finishByEntryId = new Map(activeFinishes.map((finish) => [finish.id, finish]));
+  const [busyEntryId, setBusyEntryId] = useState<string | null>(null);
+  const [offlineNotice, setOfflineNotice] = useState("");
   async function finish(entry: RaceEntry) {
     if (!race?.id || entry.id.startsWith("demo-")) return;
-    await registerFinish(competitionId, race.id, entry.id, userId);
+    setBusyEntryId(entry.id);
+    setOfflineNotice("");
+    try {
+      await registerFinish(competitionId, race.id, entry.id, userId);
+    } catch (error) {
+      if (isOfflineTimingError(error)) {
+        queueOfflineTimingEvent(createTimingEvent({
+          raceId: race.id,
+          type: "FINISH",
+          stationId: `lane-${entry.lane}`,
+          userId,
+          payload: { competitionId, entryId: entry.id, lane: entry.lane }
+        }));
+        setOfflineNotice(`OFFLINE - Lane ${entry.lane} finish stored locally`);
+      } else {
+        setOfflineNotice(error instanceof Error ? error.message : "Finish rejected");
+      }
+    } finally {
+      setBusyEntryId(null);
+    }
+  }
+  async function undo(entry: RaceEntry) {
+    if (!race?.id) return;
+    setBusyEntryId(entry.id);
+    try {
+      await undoFinish(competitionId, race.id, entry.id, userId);
+    } finally {
+      setBusyEntryId(null);
+    }
+  }
+  async function confirm(entry: RaceEntry) {
+    if (!race?.id) return;
+    setBusyEntryId(entry.id);
+    try {
+      await confirmFinish(competitionId, race.id, entry.id, userId);
+    } finally {
+      setBusyEntryId(null);
+    }
   }
   return (
     <section className={cn("race-card rounded-2xl p-4", compact && "min-h-screen border-0 bg-transparent shadow-none")}>
@@ -242,13 +340,30 @@ function FinishPanel({ competitionId, race, entries, finishes, userId, compact =
         <p className="text-xs font-bold uppercase text-race-muted">Official timer</p>
         <p className="mt-1 font-mono text-4xl font-semibold tabular-nums">{chrono.formatted}</p>
       </div>
+      {offlineNotice && <div className="mt-3 rounded-xl border border-race-warning/30 bg-race-warning/10 p-3 text-xs font-black text-race-warning">{offlineNotice}</div>}
       <div className="mt-4 grid gap-2">
-        {entries.map((entry) => (
-          <button key={entry.id} type="button" disabled={!race?.id || finishedIds.has(entry.id)} onClick={() => finish(entry)} className="flex min-h-[64px] items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 text-left disabled:opacity-50">
-            <span><strong>LANE {entry.lane}</strong><span className="block text-xs text-race-muted">{entry.athleteName}</span></span>
-            <span className="rounded-lg bg-race-primary px-3 py-2 text-xs font-black">FINISH</span>
-          </button>
-        ))}
+        {entries.map((entry) => {
+          const recordedFinish = finishByEntryId.get(entry.id);
+          const busy = busyEntryId === entry.id;
+          return (
+            <div key={entry.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <button type="button" disabled={!race?.id || Boolean(recordedFinish) || busy} onClick={() => finish(entry)} className="flex min-h-[64px] w-full items-center justify-between rounded-lg px-1 text-left disabled:opacity-60">
+                <span><strong>LANE {entry.lane}</strong><span className="block text-xs text-race-muted">{entry.athleteName}</span></span>
+                <span className="rounded-lg bg-race-primary px-3 py-2 text-xs font-black">{busy ? "..." : recordedFinish ? "RECORDED" : "FINISH"}</span>
+              </button>
+              {recordedFinish && (
+                <div className="mt-3 grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-[1fr_auto_auto]">
+                  <div>
+                    <p className="font-mono text-xl font-black tabular-nums">{formatRaceTime(recordedFinish.officialTime)}</p>
+                    <p className="text-xs text-race-muted">{recordedFinish.reviewStatus === "CONFIRMED" ? "Finish confirmed" : "Finish recorded - awaiting confirmation"}</p>
+                  </div>
+                  <button type="button" disabled={busy || recordedFinish.reviewStatus === "CONFIRMED"} onClick={() => confirm(entry)} className="min-h-11 rounded-lg bg-race-success px-4 text-xs font-black text-[#02120a] disabled:opacity-50">CONFIRM</button>
+                  <button type="button" disabled={busy} onClick={() => undo(entry)} className="min-h-11 rounded-lg border border-race-danger/40 px-4 text-xs font-black text-race-danger disabled:opacity-50">UNDO</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       <FinishDetectionPanel />
     </section>
@@ -301,19 +416,7 @@ function JuryPanel({ competitionId, race, entries, penalties, userId, role, comp
 }
 
 function RaceLeaderboard({ entries, finishes, penalties }: { entries: RaceEntry[]; finishes: RaceFinish[]; penalties: RacePenalty[] }) {
-  const ordered = entries.map((entry) => {
-    const finish = finishes.find((item) => item.id === entry.id || item.athleteId === entry.athleteId);
-    const penalty = penalties.filter((item) => item.entryId === entry.id && item.status !== "CANCELLED").reduce((sum, item) => sum + item.penaltyMs, 0);
-    return { entry, finish, penalty };
-  }).sort((a, b) => (a.finish?.rank ?? 99) - (b.finish?.rank ?? 99) || a.entry.lane - b.entry.lane);
-  return (
-    <section className="race-card rounded-2xl p-4">
-      <PanelTitle icon={Trophy} title="CLASSEMENT EN DIRECT" subtitle="Splits et arrives officielles" />
-      <div className="mt-4 space-y-2">
-        {ordered.map((item, index) => <div key={item.entry.id} className="grid grid-cols-[32px_1fr_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3"><strong>{index + 1}</strong><div><p className="text-sm font-semibold">Lane {item.entry.lane} - {item.entry.athleteName}</p><p className="text-xs text-race-muted">{item.entry.clubName}{item.penalty ? ` - +${item.penalty / 1000}s penalty` : ""}</p></div><p className="font-mono text-sm tabular-nums">{item.finish ? formatRaceTime(item.finish.officialTime + item.penalty) : "En course"}</p></div>)}
-      </div>
-    </section>
-  );
+  return <LiveRanking entries={entries} finishes={finishes} penalties={penalties} />;
 }
 
 function ResultsPanel({ race, entries, finishes, penalties }: { race: Race | null; entries: RaceEntry[]; finishes: RaceFinish[]; penalties: RacePenalty[] }) {
@@ -325,7 +428,7 @@ function ResultsPanel({ race, entries, finishes, penalties }: { race: Race | nul
           <thead className="text-xs uppercase text-race-muted"><tr><th className="py-2">Rank</th><th>Lane</th><th>Athlete</th><th>Club</th><th>Raw</th><th>Penalty</th><th>Official</th></tr></thead>
           <tbody className="divide-y divide-white/[0.07]">
             {entries.map((entry, index) => {
-              const finish = finishes.find((item) => item.id === entry.id || item.athleteId === entry.athleteId);
+              const finish = finishes.find((item) => item.reviewStatus !== "CANCELLED" && (item.id === entry.id || item.athleteId === entry.athleteId));
               const penalty = penalties.filter((item) => item.entryId === entry.id && item.status !== "CANCELLED").reduce((sum, item) => sum + item.penaltyMs, 0);
               return <tr key={entry.id}><td className="py-3">{finish?.rank ?? index + 1}</td><td>{entry.lane}</td><td>{entry.athleteName}</td><td className="text-race-muted">{entry.clubName}</td><td className="font-mono">{finish ? formatRaceTime(finish.finishTimeMs) : "--:--.---"}</td><td className="font-mono text-race-warning">{penalty ? `+${formatRaceTime(penalty)}` : "-"}</td><td className="font-mono font-bold">{finish ? formatRaceTime(finish.finishTimeMs + penalty) : "--:--.---"}</td></tr>;
             })}
@@ -379,6 +482,12 @@ function FinishDetectionPanel() {
   return <div className="mt-4 rounded-xl border border-race-warning/20 bg-race-warning/10 p-3 text-xs"><p className="font-bold text-race-warning">AI FINISH DETECTION - EXPERIMENTAL</p><p className="mt-1 text-race-muted">Aucune detection automatique ne sera creee en V1. Les suggestions futures devront etre confirmees ou rejetees par un officiel.</p></div>;
 }
 
+function isOfflineTimingError(error: unknown) {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return ["network", "offline", "unavailable", "deadline", "timeout", "failed to fetch"].some((needle) => message.includes(needle));
+}
+
 function DiagnosticPanel({ errors }: { errors: string[] }) {
   return <section className="rounded-2xl border border-race-warning/25 bg-race-warning/10 p-4 text-sm text-race-warning"><AlertTriangle className="mr-2 inline size-4" />Diagnostic / System: {errors.join(" | ")}</section>;
 }
@@ -388,7 +497,15 @@ function MobileFrame({ title, children }: { title: string; children: React.React
 }
 
 function LaneMini({ entry }: { entry: RaceEntry }) {
-  return <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm"><span><Check className="mr-2 inline size-4 text-race-success" />LANE {entry.lane}</span><span className="text-race-muted">Boat #{entry.boatNumber}</span></div>;
+  return <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm"><span className="flex items-center gap-3"><EntryAvatar entry={entry} /><span><Check className="mr-2 inline size-4 text-race-success" />LANE {entry.lane}<span className="block text-xs text-race-muted">{entry.athleteName}{entry.athleteScore != null ? ` - Score ${entry.athleteScore}` : ""}</span></span></span><span className="text-race-muted">Boat #{entry.boatNumber}</span></div>;
+}
+
+function EntryAvatar({ entry }: { entry: RaceEntry }) {
+  return (
+    <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/10 bg-race-elevated">
+      {entry.athletePhotoURL ? <span aria-label={`Photo ${entry.athleteName}`} className="size-full bg-cover bg-center" style={{ backgroundImage: `url("${entry.athletePhotoURL}")` }} /> : <Users className="size-4 text-race-muted" />}
+    </span>
+  );
 }
 
 function PanelTitle({ icon: Icon, title, subtitle }: { icon: typeof Timer; title: string; subtitle: string }) {

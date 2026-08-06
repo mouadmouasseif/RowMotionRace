@@ -5,12 +5,14 @@ import type { RaceFinish } from "@/types/live-race";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 import { raceDoc, raceEntriesCollection, raceFinishesCollection } from "./livePaths";
 import { createLiveEvent } from "./liveEventService";
+import { appendTimingJournalEvent } from "./timingJournalService";
 
 export async function registerFinish(competitionId: string, raceId: string, entryId: string, userId: string) {
   const db = getFirebaseClientDb();
   const raceRef = raceDoc(competitionId, raceId);
   const entryRef = doc(raceEntriesCollection(competitionId, raceId), entryId);
   const finishRef = doc(raceFinishesCollection(competitionId, raceId), entryId);
+  const clientCapturedAt = Date.now();
 
   const finish = await runTransaction(db, async (transaction) => {
     const [raceSnapshot, entrySnapshot, finishSnapshot, existingFinishes] = await Promise.all([
@@ -26,6 +28,7 @@ export async function registerFinish(competitionId: string, raceId: string, entr
     const race = raceSnapshot.data();
     const startTimestamp = race.startTimestamp as Timestamp | undefined;
     if (!startTimestamp) throw new Error("Start timestamp not available");
+    if (!["RACING", "FINISHING"].includes(String(race.status))) throw new Error("Race is not running");
 
     const finishTimestamp = Timestamp.now();
     const finishTimeMs = finishTimestamp.toMillis() - startTimestamp.toMillis();
@@ -41,6 +44,9 @@ export async function registerFinish(competitionId: string, raceId: string, entr
       officialTime: finishTimeMs,
       rank,
       status: "FINISHED",
+      reviewStatus: "RECORDED",
+      timingSource: "MANUAL_JUDGE",
+      recordedBy: userId,
       manualValidatedAt: finishTimestamp
     };
 
@@ -50,6 +56,15 @@ export async function registerFinish(competitionId: string, raceId: string, entr
     return { id: finishRef.id, ...nextFinish };
   });
 
+  await appendTimingJournalEvent({
+    competitionId,
+    raceId,
+    entryId,
+    type: "FINISH",
+    userId,
+    clientCapturedAt,
+    payload: { lane: finish.lane, rank: finish.rank, finishTimeMs: finish.finishTimeMs, timingSource: "MANUAL_JUDGE" }
+  });
   await createLiveEvent(competitionId, {
     type: "FINISH",
     raceId,
@@ -59,6 +74,29 @@ export async function registerFinish(competitionId: string, raceId: string, entr
     metadata: { lane: finish.lane, rank: finish.rank, finishTimeMs: finish.finishTimeMs }
   });
   return finish;
+}
+
+export async function undoFinish(competitionId: string, raceId: string, entryId: string, userId: string, reason = "Undo finish") {
+  await updateDoc(doc(raceFinishesCollection(competitionId, raceId), entryId), {
+    status: "RACING",
+    reviewStatus: "CANCELLED",
+    cancelledBy: userId,
+    cancelledAt: serverTimestamp(),
+    correctionReason: reason
+  });
+  await updateDoc(doc(raceEntriesCollection(competitionId, raceId), entryId), { status: "RACING" });
+  await appendTimingJournalEvent({ competitionId, raceId, entryId, type: "UNDO", userId, payload: { reason, target: "FINISH" } });
+  await createLiveEvent(competitionId, { type: "UNDO", raceId, userId, metadata: { entryId, reason, target: "FINISH" } });
+}
+
+export async function confirmFinish(competitionId: string, raceId: string, entryId: string, userId: string) {
+  await updateDoc(doc(raceFinishesCollection(competitionId, raceId), entryId), {
+    reviewStatus: "CONFIRMED",
+    confirmedBy: userId,
+    confirmedAt: serverTimestamp()
+  });
+  await appendTimingJournalEvent({ competitionId, raceId, entryId, type: "VALIDATION", userId, payload: { target: "FINISH" } });
+  await createLiveEvent(competitionId, { type: "VALIDATED", raceId, userId, metadata: { entryId, target: "FINISH" } });
 }
 
 export async function completeRace(competitionId: string, raceId: string) {

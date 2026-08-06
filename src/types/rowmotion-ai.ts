@@ -16,9 +16,13 @@ export interface RowMotionAthlete {
   lastName: string;
   licenseNumber: string | null;
   clubId: string | null;
+  clubName: string | null;
   categoryId: string | null;
   coachId: string | null;
   photoURL: string | null;
+  score: number | null;
+  ranking: number | null;
+  performanceLabel: string | null;
   raw: UnknownRecord;
 }
 

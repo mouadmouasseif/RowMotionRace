@@ -37,11 +37,13 @@ export type LiveEventType =
   | "FALSE_START"
   | "PENALTY"
   | "FINISH"
+  | "UNDO"
+  | "CORRECTION"
+  | "VALIDATED"
   | "RESULT_CHANGE"
   | "DSQ"
   | "DNF"
-  | "DNS"
-  | "VALIDATED";
+  | "DNS";
 
 export type CourseType = "STRAIGHT" | "OUT_AND_BACK" | "LOOP" | "MULTI_LAP" | "SPRINT" | "HEAD_RACE" | "CUSTOM";
 export type DrawStatus = "NOT_STARTED" | "DRAFT" | "CONFIRMED" | "LOCKED";
@@ -86,6 +88,10 @@ export interface RaceEntry {
   id: string;
   athleteId: string;
   athleteName: string;
+  athletePhotoURL?: string | null;
+  athleteScore?: number | null;
+  athleteRanking?: number | null;
+  athletePerformanceLabel?: string | null;
   clubId: string;
   clubName: string;
   clubLogo?: string | null;
@@ -179,6 +185,16 @@ export interface RaceFinish {
   officialTime: number;
   rank: number;
   status?: EntryStatus;
+  reviewStatus?: "RECORDED" | "CONFIRMED" | "CORRECTED" | "CANCELLED";
+  timingSource?: "TIMING_SERVER" | "MANUAL_JUDGE" | "ESP32" | "PHOTO_FINISH";
+  recordedBy?: string;
+  confirmedBy?: string;
+  correctedBy?: string;
+  cancelledBy?: string;
+  correctionReason?: string;
+  cancelledAt?: Timestamp;
+  confirmedAt?: Timestamp;
+  correctedAt?: Timestamp;
   finishDetectionConfidence?: number;
   autoDetectedAt?: Timestamp;
   manualValidatedAt?: Timestamp;

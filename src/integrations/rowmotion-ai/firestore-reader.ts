@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, limit, query, type DocumentData, type QueryDocumentSnapshot } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, onSnapshot, query, type DocumentData, type QueryDocumentSnapshot } from "firebase/firestore";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 import type { RowMotionCollectionName } from "@/constants/firestore";
 import type { UnknownRecord } from "@/types/rowmotion-ai";
@@ -32,4 +32,18 @@ export async function readDocument<T>(name: RowMotionCollectionName, id: string,
   } catch (error) {
     throw new RowMotionIntegrationError(`Impossible de lire « ${name}/${id} » dans RowMotion AI.`, error);
   }
+}
+
+export function subscribeCollection<T>(
+  name: RowMotionCollectionName,
+  normalizer: Normalizer<T>,
+  onChange: (items: T[]) => void,
+  onError?: (error: Error) => void,
+  maximum = 500
+) {
+  return onSnapshot(
+    query(collection(getFirebaseClientDb(), name), limit(maximum)),
+    (snapshot) => onChange(snapshot.docs.map((item) => normalized(item, normalizer))),
+    (error) => onError?.(new RowMotionIntegrationError(`Impossible de synchroniser la collection RowMotion AI "${name}".`, error))
+  );
 }

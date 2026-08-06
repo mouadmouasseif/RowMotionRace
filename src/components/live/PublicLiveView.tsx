@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
 import { Radio } from "lucide-react";
 import type { Competition } from "@/types/federation";
-import type { Race } from "@/types/live-race";
+import type { Race, RaceEntry } from "@/types/live-race";
+import type { RowMotionAthlete, RowMotionClub } from "@/types/rowmotion-ai";
 import { competitionsCollection, racesCollection } from "@/services/livePaths";
 import { useRaceEntries } from "@/hooks/useRaceEntries";
 import { useLiveResults } from "@/hooks/useLiveResults";
-import { useRaceChronometer, formatRaceTime } from "@/hooks/useRaceChronometer";
+import { useRaceChronometer } from "@/hooks/useRaceChronometer";
+import { subscribeExistingAthletes } from "@/integrations/rowmotion-ai/rowmotion-athletes.adapter";
+import { subscribeExistingClubs } from "@/integrations/rowmotion-ai/rowmotion-clubs.adapter";
+import { LiveRanking } from "@/live/LiveRanking";
 
 export function PublicLiveView({ code }: { code: string }) {
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [race, setRace] = useState<Race | null>(null);
+  const [rowMotionAthletes, setRowMotionAthletes] = useState<RowMotionAthlete[]>([]);
+  const [rowMotionClubs, setRowMotionClubs] = useState<RowMotionClub[]>([]);
 
   useEffect(() => {
     let unsubscribeRace: (() => void) | undefined;
@@ -40,15 +46,34 @@ export function PublicLiveView({ code }: { code: string }) {
     };
   }, [code]);
 
+  useEffect(() => {
+    const unsubscribeAthletes = subscribeExistingAthletes(setRowMotionAthletes, undefined, 1000);
+    const unsubscribeClubs = subscribeExistingClubs(setRowMotionClubs, undefined, 500);
+    return () => {
+      unsubscribeAthletes();
+      unsubscribeClubs();
+    };
+  }, []);
+
   const { entries } = useRaceEntries(competition?.id ?? "", race?.id);
   const { finishes, penalties } = useLiveResults(competition?.id ?? "", race?.id);
   const chrono = useRaceChronometer(race);
-  const ordered = entries.map((entry) => {
-    const finish = finishes.find((item) => item.id === entry.id || item.athleteId === entry.athleteId);
-    const penalty = penalties.filter((item) => item.entryId === entry.id && item.status !== "CANCELLED").reduce((sum, item) => sum + item.penaltyMs, 0);
-    return { entry, finish, penalty };
-  }).sort((a, b) => (a.finish?.rank ?? 99) - (b.finish?.rank ?? 99) || a.entry.lane - b.entry.lane);
-
+  const athleteMap = useMemo(() => new Map(rowMotionAthletes.map((athlete) => [athlete.id, athlete])), [rowMotionAthletes]);
+  const clubMap = useMemo(() => new Map(rowMotionClubs.map((club) => [club.id, club])), [rowMotionClubs]);
+  const enrichedEntries = useMemo<RaceEntry[]>(() => entries.map((entry) => {
+    const athlete = athleteMap.get(entry.athleteId);
+    const club = clubMap.get(athlete?.clubId ?? entry.clubId);
+    return {
+      ...entry,
+      athleteName: athlete?.displayName ?? entry.athleteName,
+      athletePhotoURL: athlete?.photoURL ?? entry.athletePhotoURL,
+      athleteScore: athlete?.score ?? entry.athleteScore,
+      athleteRanking: athlete?.ranking ?? entry.athleteRanking,
+      athletePerformanceLabel: athlete?.performanceLabel ?? entry.athletePerformanceLabel,
+      clubId: athlete?.clubId ?? entry.clubId,
+      clubName: athlete?.clubName ?? club?.name ?? entry.clubName
+    };
+  }), [athleteMap, clubMap, entries]);
   return (
     <main className="min-h-screen bg-[#020b18] text-race-text">
       <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -77,18 +102,7 @@ export function PublicLiveView({ code }: { code: string }) {
               </div>
             </div>
           </div>
-          <aside className="race-card rounded-2xl p-4">
-            <h2 className="text-sm font-black uppercase tracking-[.16em]">Classement en direct</h2>
-            <div className="mt-4 space-y-2">
-              {ordered.length === 0 ? <p className="text-sm text-race-muted">Aucun participant public disponible.</p> : ordered.map((item, index) => (
-                <div key={item.entry.id} className="grid grid-cols-[32px_1fr_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] p-3">
-                  <strong>{index + 1}</strong>
-                  <div><p className="text-sm font-bold">{item.entry.athleteName}</p><p className="text-xs text-race-muted">{item.entry.clubName}{item.penalty ? ` - +${item.penalty / 1000}s` : ""}</p></div>
-                  <p className="font-mono text-sm">{item.finish ? formatRaceTime(item.finish.finishTimeMs + item.penalty) : "En course"}</p>
-                </div>
-              ))}
-            </div>
-          </aside>
+          <LiveRanking entries={enrichedEntries} finishes={finishes} penalties={penalties} />
         </section>
         <section className="mt-5 race-card rounded-2xl p-5">
           <h2 className="text-sm font-black uppercase tracking-[.16em]">Progression</h2>
